@@ -111,8 +111,12 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'  # required for collectstatic
 
-# Optional: if you have a local static folder
-STATICFILES_DIRS = [BASE_DIR / 'static']
+# Only add STATICFILES_DIRS if the folder exists
+STATIC_DIR = BASE_DIR / 'static'
+if STATIC_DIR.exists():
+    STATICFILES_DIRS = [STATIC_DIR]
+else:
+    STATICFILES_DIRS = []
 
 # ------------------------------
 # Media Files (User uploads)
@@ -128,19 +132,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # ------------------------------
 # Email Configuration
 # ------------------------------
+EDEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_HOST = "smtp.gmail.com"
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "prjamgade@gmail.com")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "your-app-password")  # use environment variable in production
+EMAIL_HOST_USER = "prjamgade@gmail.com"
+EMAIL_HOST_PASSWORD = "eios ccnc httk qdtk" 
 
 # ------------------------------
 # DRF Configuration
 # ------------------------------
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",  # for session-based auth
+        "rest_framework.authentication.SessionAuthentication",  # or use TokenAuthentication
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
