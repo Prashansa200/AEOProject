@@ -109,14 +109,8 @@ USE_TZ = True
 # Static Files (CSS, JS, Images)
 # ------------------------------
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'  # required for collectstatic
-
-# Only add STATICFILES_DIRS if the folder exists
-STATIC_DIR = BASE_DIR / 'static'
-if STATIC_DIR.exists():
-    STATICFILES_DIRS = [STATIC_DIR]
-else:
-    STATICFILES_DIRS = []
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 # ------------------------------
 # Media Files (User uploads)
