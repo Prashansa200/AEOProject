@@ -57,24 +57,34 @@ class ResetPasswordSerializer(serializers.Serializer):
 
 # Profile
 
+
 class ProfileSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(source='user.first_name', required=False)
     last_name = serializers.CharField(source='user.last_name', required=False)
     email = serializers.EmailField(source='user.email', read_only=True)
+    photo = serializers.SerializerMethodField()  # This will show full photo URL
+    photo_url = serializers.URLField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = Profile
-        fields = ['first_name', 'last_name', 'email', 'mobile_number', 'photo']
-    def validate_photo(self, value):
-        """Validate that the uploaded photo is not more than 50KB."""
-        max_size = 50 * 1024  # 50 KB
-        if value and value.size > max_size:
-            raise serializers.ValidationError("Profile photo size must be less than 50KB.")
-        return value
+        fields = ['first_name', 'last_name', 'email', 'mobile_number', 'photo', 'photo_url']
+
+    def get_photo(self, obj):
+        """Return full URL of the uploaded photo."""
+        request = self.context.get('request')
+        if obj.photo:
+            return request.build_absolute_uri(obj.photo.url)
+        return None
+    def __init__(self, *args, **kwargs):
+        """Dynamically remove fields when context specifies."""
+        hide_photo = kwargs.pop('hide_photo', False)
+        super().__init__(*args, **kwargs)
+        if hide_photo:
+            self.fields.pop('photo', None)  
     def update(self, instance, validated_data):
-        # Extract user-related fields from validated_data
+        """Update profile details and optionally update photo using URL."""
         user_data = validated_data.pop('user', {})
-        user = instance.user
+        user = instance.user  # linked CustomUser object
 
         # Update user fields safely
         if 'first_name' in user_data:
@@ -83,23 +93,34 @@ class ProfileSerializer(serializers.ModelSerializer):
             user.last_name = user_data['last_name']
         user.save()
 
-        # Update profile fields
+        # Update other profile fields
         instance.mobile_number = validated_data.get('mobile_number', instance.mobile_number)
+        instance.photo_url = validated_data.get('photo_url', instance.photo_url)
+        instance.save()
 
-        # Handle optional photo update
-    
         return instance
+
+class ProfilePhotoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Profile
+        fields = ['photo']
+
+    def validate_photo(self, value):
+        max_size = 50 * 1024  # 50 KB
+        if value and value.size > max_size:
+            raise serializers.ValidationError("Profile photo size must be less than 50KB.")
+        return value
     
 
 class ChangePasswordRequestSerializer(serializers.Serializer):
-    email_or_mobile = serializers.CharField()
+    email = serializers.CharField()
 
     def validate(self, data):
-        email_or_mobile = data.get("email_or_mobile")
+        email = data.get("email")
 
         # Try to find user by email or mobile
-        user = User.objects.filter(email=email_or_mobile).first() or \
-               User.objects.filter(contact_number=email_or_mobile).first()
+        user = User.objects.filter(email=email).first() or \
+               User.objects.filter(contact_number=email).first()
 
         if not user:
             raise serializers.ValidationError("No user found with this email or mobile number.")

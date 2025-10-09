@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from .models import CustomUser, UserOTP,Profile,PasswordResetOTP
 from .serializers import (
     SignupSerializer, LoginSerializer, OTPVerifySerializer,VerifyChangePasswordOTPSerializer,
-    ForgotPasswordSerializer, ResetPasswordSerializer, ProfileSerializer,ChangePasswordRequestSerializer,ProfResetPasswordSerializer
+    ForgotPasswordSerializer, ResetPasswordSerializer, ProfileSerializer,ChangePasswordRequestSerializer,ProfResetPasswordSerializer,ProfilePhotoSerializer
 )
 import random
 
@@ -28,10 +28,22 @@ class SignupView(GenericAPIView):
     serializer_class = SignupSerializer
 
     def post(self, request):
+        email = request.data.get("email")  # assuming user signs up with email
+        if CustomUser.objects.filter(email=email).exists():
+            return Response(
+                {"message": "User already exists"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response({"msg": "User registered successfully"}, status=status.HTTP_201_CREATED)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {"message": "User registered successfully"},
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ---------------------------
@@ -73,6 +85,7 @@ class LoginView(GenericAPIView):
         )
         verify_otp = request.build_absolute_uri(reverse('verify-otp'))
         return Response({"message": "OTP sent to your registered email.",
+                         "user_id": user.id,
                          "Next":verify_otp
                          }, status=status.HTTP_200_OK)
 
@@ -115,7 +128,7 @@ class OTPVerifyView(GenericAPIView):
         # Return user profile data after OTP verification
 
         profile_url = request.build_absolute_uri(
-    reverse('profile', kwargs={'email': user.email})
+    reverse('profile', kwargs={'id': user.id})
 )
         return Response({
     "message": "OTP verified successfully",
@@ -129,66 +142,100 @@ class ProfileView(generics.GenericAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [] 
     queryset = Profile.objects.all()
-    lookup_field = 'email'  # we'll use email in URL, e.g., /profile/<email>/
+    lookup_field = 'id'  # we'll use email in URL, e.g., /profile/<email>/
 
-    def get(self, request, email):
+    def get(self, request, id):
         """Fetch profile data by email."""
-        user = get_object_or_404(User, email=email)
+        user = get_object_or_404(User, id=id)
         profile, created = Profile.objects.get_or_create(user=user)
-        serializer = self.get_serializer(profile)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        # serializer = self.get_serializer(profile)
+        serializer = ProfileSerializer(profile, context={'request': request}, hide_photo=True)
+        # upload_photo_url = request.build_absolute_uri("/upload-photo/")
 
-    def put(self, request, email):
-        """Update full profile data."""
-        user = get_object_or_404(User, email=email)
+        data = serializer.data  # Get serialized profile data
+        # data["Upload Photo"] = upload_photo_url  # Add the extra field
+
+        return Response(data, status=status.HTTP_200_OK)
+
+    def put(self, request, id):
+
+        user = get_object_or_404(User, id=id)
         profile, created = Profile.objects.get_or_create(user=user)
-        serializer = self.get_serializer(profile, data=request.data)
+        serializer = ProfileSerializer(profile, data=request.data, context={'request': request}, hide_photo=True)
         if serializer.is_valid():
             serializer.save()
             profile_view_url = request.build_absolute_uri(
-    reverse('profile-detail', kwargs={'email': user.email})
+    reverse('profile-detail', kwargs={'id': user.id})
 )
             change_password_url = request.build_absolute_uri(
-    reverse('change-password-request', kwargs={'email': user.email})
+    reverse('change-password-request', kwargs={'id': user.id})
 )
+    
 
-
-        return Response(
-    {
-        "message": "Your profile has been updated successfully.",
-        "Profile details": profile_view_url,
-        "Change password": change_password_url
-    },
-    status=status.HTTP_200_OK
-)
+            return Response(
+        {
+            "message": "Your profile has been updated successfully.",
+            "Profile Details": profile_view_url,
+            "Change Password": change_password_url,
+        },
+        status=status.HTTP_200_OK
+    )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def patch(self, request, email):
+    def patch(self, request, id):
         """Partially update profile data."""
-        user = get_object_or_404(User, email=email)
+        user = get_object_or_404(User, id=id)
         profile, created = Profile.objects.get_or_create(user=user)
-        serializer = self.get_serializer(profile, data=request.data, partial=True)
+        serializer = ProfileSerializer(profile, data=request.data, partial=True, context={'request': request}, hide_photo=True)
         if serializer.is_valid():
             serializer.save()
             profile_view_url = request.build_absolute_uri(
-    reverse('profile-detail', kwargs={'email': user.email})
+    reverse('profile-detail', kwargs={'id': user.id})
 )
             change_password_url = request.build_absolute_uri(
-    reverse('change-password-request', kwargs={'email': user.email})
+    reverse('change-password-request', kwargs={'id': user.id})
 )
+ 
 
-        return Response(
-    {
-        "message": "Your profile has been updated successfully.",
-        "Profile details": profile_view_url,
-        "Change password": change_password_url
-    },
-    status=status.HTTP_200_OK
-)
+            return Response(
+        {
+            "message": "Your profile has been updated successfully.",
+        
+            "Profile Details": profile_view_url,
+            "Change Password": change_password_url,
+        },
+        status=status.HTTP_200_OK
+    )
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 
+class ProfilePhotoUploadView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = ProfilePhotoSerializer
+
+    def post(self, request):
+        # 🧩 Check if image is provided
+        if 'photo' not in request.FILES:
+            return Response(
+                {"message": "Please upload a photo."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            profile = serializer.save()
+            photo_url = request.build_absolute_uri(profile.photo.url) if profile.photo else None
+
+            return Response(
+                {
+                    "message": "Photo uploaded successfully.",
+                    "photo_url": photo_url
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)    
 class ProfileDetailView(generics.GenericAPIView):
     """
     View-only profile details by email.
@@ -196,17 +243,20 @@ class ProfileDetailView(generics.GenericAPIView):
     serializer_class = ProfileSerializer
     permission_classes = [permissions.AllowAny]
     queryset = Profile.objects.all()
-    lookup_field = 'email'
+    lookup_field = 'id'
 
-    def get(self, request, email):
-        user = get_object_or_404(User, email=email)
+    def get(self, request, id):
+        user = get_object_or_404(User, id=id)
         profile = get_object_or_404(Profile, user=user)
-
-        serializer = self.get_serializer(profile)
+        serializer = ProfileSerializer(profile, context={'request': request}, hide_photo=True)
+        profile_url = request.build_absolute_uri(
+    reverse('profile', kwargs={'id': user.id})
+)
         return Response(
             {
                 "message": "Here are your profile details.",
-                "data": serializer.data
+                "data": serializer.data,
+                "Go Back":profile_url
             },
             status=status.HTTP_200_OK
         )
@@ -279,7 +329,6 @@ class ResetPasswordView(generics.GenericAPIView):
         user.save()
 
         # ✅ Remove OTP after successful reset
-        del verification_otp[user_identifier]
         login_url = request.build_absolute_uri(reverse('login'))
         return Response({"message": "Password reset successful.",
                          "Login Again":login_url}, status=status.HTTP_200_OK)
@@ -289,34 +338,40 @@ class ChangePasswordRequestView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = ChangePasswordRequestSerializer
 
-    def post(self, request,email):
+    def post(self, request, id):
+        # Get user by ID from URL
+        user = get_object_or_404(User, id=id)
+        email = user.email  # get email from user object
+
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            user = serializer.validated_data["user"]
-
             # Generate OTP
-
             otp_entry = PasswordResetOTP.generate_otp()
             PasswordResetOTP.objects.create(user=user, otp=otp_entry)
-            # Send OTP (email example)
+
+            # Send OTP via email
             send_mail(
-            subject="Your Password Reset OTP",
-            message=f"Your OTP code is {otp_entry}",
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[email],
-        )
-            verify_prfl_otp_url = request.build_absolute_uri(reverse('verify-change-password-otp'))
+                subject="Your Password Reset OTP",
+                message=f"Your OTP code is {otp_entry}",
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[email],
+            )
+
+            # URL for verifying OTP
+            verify_otp_url = request.build_absolute_uri(
+                reverse("verify-change-password-otp")
+            )
 
             return Response(
                 {
                     "message": "OTP has been sent to your registered email.",
-                    "next": verify_prfl_otp_url
+                    "user_id": user.id,
+                    "next": verify_otp_url,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 class VerifyChangePasswordOTPView(generics.GenericAPIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = VerifyChangePasswordOTPSerializer

@@ -58,9 +58,10 @@ class UserOTP(models.Model):
     
 
 class Profile(models.Model):
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, null=True, blank=True)
     mobile_number = models.CharField(max_length=15, blank=True)
     photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
+    photo_url=models.CharField(max_length=255,null=True, blank=True)
 
     def __str__(self):
         return self.user.email
